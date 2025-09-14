@@ -29,3 +29,6 @@ venv/
 archive/
 
 .vscode/
+
+
+data/
