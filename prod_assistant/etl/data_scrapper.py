@@ -3,7 +3,12 @@ import time
 import re
 import os
 from bs4 import BeautifulSoup
-import undetected_chromedriver as uc
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.edge.options import Options as EdgeOptions
+from selenium.common.exceptions import SessionNotCreatedException, WebDriverException
+from typing import Optional
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
@@ -13,13 +18,51 @@ class FlipkartScraper:
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
 
+    def _resolve_chrome_path(self) -> Optional[str]:
+        """Try common Chrome install paths on Windows and return the first that exists."""
+        candidates = [
+            r"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+            r"C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+            os.path.join(os.getenv("LOCALAPPDATA", ""), "Google", "Chrome", "Application", "chrome.exe"),
+        ]
+        for path in candidates:
+            if path and os.path.isfile(path):
+                return path
+        return None
+
+    def _create_driver(self):
+        """Create a Selenium WebDriver with fallbacks (Chrome → Edge)."""
+        # Try Chrome first
+        try:
+            chrome_opts = ChromeOptions()
+            chrome_opts.add_argument("--no-sandbox")
+            chrome_opts.add_argument("--disable-gpu")
+            chrome_opts.add_argument("--disable-dev-shm-usage")
+            chrome_opts.add_argument("--disable-extensions")
+            chrome_opts.add_argument("--no-first-run")
+            chrome_opts.add_argument("--no-default-browser-check")
+            chrome_opts.add_argument("--remote-allow-origins=*")
+            chrome_opts.add_argument("--headless=new")
+            chrome_binary = self._resolve_chrome_path()
+            if chrome_binary:
+                chrome_opts.binary_location = chrome_binary
+            return webdriver.Chrome(options=chrome_opts)
+        except (SessionNotCreatedException, WebDriverException):
+            # Fallback to Edge (preinstalled on Windows)
+            edge_opts = EdgeOptions()
+            edge_opts.add_argument("--no-sandbox")
+            edge_opts.add_argument("--disable-gpu")
+            edge_opts.add_argument("--disable-dev-shm-usage")
+            edge_opts.add_argument("--headless=new")
+            try:
+                return webdriver.Edge(options=edge_opts)
+            except Exception as edge_error:
+                raise edge_error
+
     def get_top_reviews(self,product_url,count=2):
         """Get the top reviews for a product.
         """
-        options = uc.ChromeOptions()
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-blink-features=AutomationControlled")
-        driver = uc.Chrome(options=options,use_subprocess=True)
+        driver = self._create_driver()
 
         if not product_url.startswith("http"):
             driver.quit()
@@ -59,8 +102,7 @@ class FlipkartScraper:
     def scrape_flipkart_products(self, query, max_products=1, review_count=2):
         """Scrape Flipkart products based on a search query.
         """
-        options = uc.ChromeOptions()
-        driver = uc.Chrome(options=options,use_subprocess=True)
+        driver = self._create_driver()
         search_url = f"https://www.flipkart.com/search?q={query.replace(' ', '+')}"
         driver.get(search_url)
         time.sleep(4)

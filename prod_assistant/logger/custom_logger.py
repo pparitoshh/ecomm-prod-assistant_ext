@@ -46,6 +46,9 @@ class CustomLogger:
         return structlog.get_logger(logger_name)
 
 
+# Global logger instance
+GLOBAL_LOGGER = CustomLogger().get_logger(__file__)
+
 # # --- Usage Example ---
 # if __name__ == "__main__":
 #     logger = CustomLogger().get_logger(__file__)
